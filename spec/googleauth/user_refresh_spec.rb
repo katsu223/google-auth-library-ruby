@@ -326,26 +326,36 @@ describe Google::Auth::UserRefreshCredentials do
   end
 
   describe "when revoking a refresh token" do
+    let(:response_body) { "{}" }
     let :stub do
       stub_request(:post, "https://oauth2.googleapis.com/revoke")
         .with(body: hash_including("token" => "refreshtoken"))
         .to_return(status:  200,
+                   body: response_body,
                    headers: { "Content-Type" => "application/json" })
     end
 
     before :example do
       stub
-      @client.revoke!
+      @result = @client.revoke!
     end
 
     it_behaves_like "revoked token"
+
+    # The return value is passed through retry_with_error's logging pipeline,
+    # which expects a JSON-parseable string.
+    it "returns the response body" do
+      expect(@result).to eq(response_body)
+    end
   end
 
   describe "when revoking an access token" do
+    let(:response_body) { "{}" }
     let :stub do
       stub_request(:post, "https://oauth2.googleapis.com/revoke")
         .with(body: hash_including("token" => "accesstoken"))
         .to_return(status:  200,
+                   body: response_body,
                    headers: { "Content-Type" => "application/json" })
     end
 
@@ -353,10 +363,16 @@ describe Google::Auth::UserRefreshCredentials do
       stub
       @client.refresh_token = nil
       @client.access_token = "accesstoken"
-      @client.revoke!
+      @result = @client.revoke!
     end
 
     it_behaves_like "revoked token"
+
+    # The return value is passed through retry_with_error's logging pipeline,
+    # which expects a JSON-parseable string.
+    it "returns the response body" do
+      expect(@result).to eq(response_body)
+    end
   end
 
   describe "when revoking an invalid token" do
