@@ -394,10 +394,46 @@ describe Google::Auth::UserRefreshCredentials do
     end
   end
 
+  describe "logging during revoke" do
+    let(:response_body) { '{"foo": "bar"}' }
+    let :stub do
+      stub_request(:post, "https://oauth2.googleapis.com/revoke")
+        .with(body: hash_including("token" => "refreshtoken"))
+        .to_return(status:  200,
+                   body: response_body,
+                   headers: { "Content-Type" => "application/json" })
+    end
+
+    it "logs the response body" do
+      stub
+      strio = StringIO.new
+      logger = Logger.new strio
+      logger.level = Logger::DEBUG
+      @client.logger = logger
+      @client.revoke!
+      expect(strio.string).to include("Received auth token response")
+    end
+
+    it "logs transient errors when they occur" do
+      allow_any_instance_of(Faraday::Connection).to receive(:post).and_raise(Faraday::TimeoutError)
+      strio = StringIO.new
+      logger = Logger.new strio
+      @client.logger = logger
+      
+      # Stub sleep to avoid slow tests
+      allow(@client).to receive(:sleep)
+
+      expect { @client.revoke! }.to raise_error Signet::AuthorizationError
+      expect(strio.string).to include("Transient error when fetching auth token")
+      expect(strio.string).to include("Exhausted retries when fetching auth token")
+    end
+  end
+
   describe "when errors occurred with request" do
     it "should fail with Signet::AuthorizationError if request times out" do
       allow_any_instance_of(Faraday::Connection).to receive(:post)
         .and_raise(Faraday::TimeoutError)
+      expect(@client).to receive(:sleep).exactly(5).times.with(kind_of(Numeric))
       expect { @client.revoke! }
         .to raise_error Signet::AuthorizationError
     end
@@ -405,6 +441,7 @@ describe Google::Auth::UserRefreshCredentials do
     it "should fail with Signet::AuthorizationError if request fails" do
       allow_any_instance_of(Faraday::Connection).to receive(:post)
         .and_raise(Faraday::ConnectionFailed, nil)
+      expect(@client).to receive(:sleep).exactly(5).times.with(kind_of(Numeric))
       expect { @client.revoke! }
         .to raise_error Signet::AuthorizationError
     end
